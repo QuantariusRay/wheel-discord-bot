@@ -8,5 +8,5 @@ agent-transcripts/
 mcps/
 terminals/
 
-# Only ship stable wheel art (ignore Cursor workspace image copies)
-assets/c__*
+# Cursor workspace image dumps (keep committed art under assets/classes/)
+assets/c__Users_quant_AppData_Roaming_Cursor_User_workspaceStorage_*

@@ -4,8 +4,15 @@ import {
   Events,
   GatewayIntentBits,
   Interaction,
+  MessageFlags,
 } from 'discord.js';
 import { handleCustomGame } from './commands/custom-game';
+
+function discordApiCode(e: unknown): number | undefined {
+  if (typeof e !== 'object' || e === null) return undefined;
+  const code = (e as { code?: unknown }).code;
+  return typeof code === 'number' ? code : undefined;
+}
 
 const token = process.env.DISCORD_TOKEN;
 if (!token) {
@@ -28,14 +35,27 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
     await handleCustomGame(interaction);
   } catch (err) {
     console.error(err);
-    const payload = {
-      content: 'Something went wrong while rolling the daily.',
-      ephemeral: true as const,
-    };
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp(payload);
-    } else {
-      await interaction.reply(payload);
+    const code = discordApiCode(err);
+    if (code === 10062) {
+      console.error(
+        '[custom game] Unknown interaction (10062): token already expired or used. ' +
+          'Stop every other process using this bot token (Heroku worker, second terminal, second PC), ' +
+          'then try again. If you run `node dist/index.js`, rebuild and restart after code changes.',
+      );
+      return;
+    }
+    const msg = 'Something went wrong while rolling the daily.';
+    try {
+      // After deferReply, only editReply is valid — reply() causes 10062 Unknown interaction.
+      if (interaction.deferred) {
+        await interaction.editReply({ content: msg, embeds: [], files: [] });
+      } else if (!interaction.replied) {
+        await interaction.reply({ content: msg, flags: MessageFlags.Ephemeral });
+      } else {
+        await interaction.followUp({ content: msg, flags: MessageFlags.Ephemeral });
+      }
+    } catch (e2) {
+      console.error('Failed to notify user about command error', e2);
     }
   }
 });

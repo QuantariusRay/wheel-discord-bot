@@ -1,6 +1,24 @@
 # STS2 Wheel (Discord bot)
 
-Slash command **`/custom game`** rolls randomized Slay the Spire 2 custom game settings (1–4 players, classes, ascension, modes, modifiers) and replies with an embed plus the wheel image.
+Slash command **`/custom game`** rolls randomized Slay the Spire 2 custom game settings (1–4 players, classes, ascension, modes, modifiers) and replies with a compact embed plus a **generated PNG** (roster portraits, ascension, mode + definitions, modifiers + definitions, bad effects).
+
+## Class portraits (required for images in the roll)
+
+Add these five files next to each other under **`assets/classes/`** (exact names):
+
+- `ironclad.png`
+- `silent.png`
+- `regent.png`
+- `necrobinder.png`
+- `defect.png`
+
+If a file is missing, the roll image still generates and shows a placeholder box with the expected filename.
+
+If Discord / Cursor dropped long-named copies under `assets/`, you can run:
+
+```powershell
+pwsh -File scripts/copy-class-art-from-cursor.ps1
+```
 
 ## Setup
 
@@ -66,3 +84,15 @@ heroku ps:scale worker=1 -a your-app-name
 ```
 
 Each deploy runs **`release`**: `node dist/deploy-commands.js` (re-registers slash commands), then **`worker`**: `node dist/index.js` (the bot). Build runs via `heroku-postbuild` → `npm run build`.
+
+### Heroku and `@napi-rs/canvas`
+
+Roll images use **`@napi-rs/canvas`** (Skia native binary). On current Heroku stacks this usually installs prebuilt binaries with `npm install` like on desktop.
+
+If the slug **fails to build** or the worker **crashes on startup** with a native-module error, try:
+
+- Use the latest **Heroku-24** (or **Heroku-22**) stack for the app.
+- Ensure **`package-lock.json`** is committed so Heroku resolves the same `@napi-rs/canvas` version.
+- As a last resort, check Heroku’s Node docs and any canvas-related buildpack notes for your stack year.
+
+Commit the five **`assets/classes/*.png`** files if you want portraits on Heroku; the bot does not bundle them automatically.

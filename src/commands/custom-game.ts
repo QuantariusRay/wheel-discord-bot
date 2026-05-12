@@ -1,5 +1,3 @@
-import { existsSync } from 'node:fs';
-import path from 'node:path';
 import {
   AttachmentBuilder,
   ChatInputCommandInteraction,
@@ -8,7 +6,6 @@ import {
 } from 'discord.js';
 import { rollDaily } from '../lib/randomizeDaily';
 
-/** Teal accent aligned with wheel art */
 const EMBED_COLOR = 0x14b8a6;
 
 export const customCommand = new SlashCommandBuilder()
@@ -31,45 +28,84 @@ export const customCommand = new SlashCommandBuilder()
 export async function handleCustomGame(
   interaction: ChatInputCommandInteraction,
 ): Promise<void> {
+  const lagMs = Date.now() - interaction.createdTimestamp;
+  if (lagMs > 2500) {
+    console.warn(
+      `[custom game] Interaction ${interaction.id} reached deferReply after ${lagMs}ms; Discord allows ~3000ms to acknowledge.`,
+    );
+  }
+
+  // Acknowledge within 3s. Heavy canvas work must NOT run on this stack — it blocks
+  // other interactions' deferReply and causes DiscordAPIError[10062] Unknown interaction.
+  await interaction.deferReply();
+
   const players = interaction.options.getInteger('players', true);
   const roll = rollDaily(players);
 
-  const rosterLines = roll.roster
-    .map((c, i) => `**Player ${i + 1}:** ${c}`)
-    .join('\n');
+  setImmediate(() => {
+    void (async () => {
+      // Load Skia/canvas only after defer — avoids blocking the gateway thread on first
+      // `require` and keeps other interactions able to acknowledge within 3s.
+      let renderRollPng: typeof import('../lib/renderRollImage').renderRollPng;
+      try {
+        ({ renderRollPng } = await import('../lib/renderRollImage'));
+      } catch (e) {
+        console.error(e);
+        try {
+          await interaction.editReply({
+            content: 'Failed to load image renderer. Check server logs.',
+            embeds: [],
+            files: [],
+          });
+        } catch (e2) {
+          console.error('Failed to editReply after renderer load error', e2);
+        }
+        return;
+      }
 
-  const positiveText =
-    roll.positiveDisplay === 'None of the above'
-      ? 'None of the above'
-      : roll.positiveDisplay.join(', ');
+      let png: Buffer;
+      try {
+        png = await renderRollPng(roll);
+      } catch (err) {
+        console.error(err);
+        try {
+          await interaction.editReply({
+            content: 'Could not generate the roll image. Check server logs.',
+            embeds: [],
+            files: [],
+          });
+        } catch (e2) {
+          console.error('Failed to send error editReply', e2);
+        }
+        return;
+      }
 
-  const badText = roll.badEffects.join(', ');
+      const attachment = new AttachmentBuilder(png, { name: 'roll.png' });
 
-  const wheelPath = path.join(process.cwd(), 'assets', 'wheel.png');
-  if (!existsSync(wheelPath)) {
-    await interaction.reply({
-      content: 'Missing bot asset `assets/wheel.png`.',
-      ephemeral: true,
-    });
-    return;
-  }
+      const embed = new EmbedBuilder()
+        .setColor(EMBED_COLOR)
+        .setTitle('Slay the Spire 2 — custom game')
+        .setDescription(
+          'Rolled settings — see image for roster, ascension, mode, modifiers, and bad effects.',
+        )
+        .setImage('attachment://roll.png')
+        .setFooter({ text: 'Daily roll' })
+        .setTimestamp(new Date());
 
-  const attachment = new AttachmentBuilder(wheelPath, { name: 'wheel.png' });
-
-  const embed = new EmbedBuilder()
-    .setColor(EMBED_COLOR)
-    .setTitle('Slay the Spire 2 — custom game')
-    .setDescription('Your randomized settings for this run.')
-    .setImage('attachment://wheel.png')
-    .addFields(
-      { name: 'Ascension', value: String(roll.ascension), inline: true },
-      { name: 'Mode', value: roll.primaryMode, inline: true },
-      { name: 'Modifiers', value: positiveText, inline: false },
-      { name: 'Bad effects', value: badText, inline: false },
-      { name: 'Roster', value: rosterLines, inline: false },
-    )
-    .setFooter({ text: 'Daily roll' })
-    .setTimestamp(new Date());
-
-  await interaction.reply({ embeds: [embed], files: [attachment] });
+      try {
+        await interaction.editReply({ embeds: [embed], files: [attachment] });
+      } catch (err) {
+        console.error(err);
+        try {
+          await interaction.editReply({
+            content: 'Could not upload the roll image (try again or use smaller class PNGs).',
+            embeds: [],
+            files: [],
+          });
+        } catch (e2) {
+          console.error('Failed to send error editReply', e2);
+        }
+      }
+    })();
+  });
 }
