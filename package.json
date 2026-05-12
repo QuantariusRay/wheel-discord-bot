@@ -1,0 +1,26 @@
+{
+  "name": "sts2-wheel-bot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Discord bot: randomized Slay the Spire 2 custom game settings",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "heroku-postbuild": "npm run build",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "deploy-commands": "tsx src/deploy-commands.ts"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "discord.js": "^14.16.3",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

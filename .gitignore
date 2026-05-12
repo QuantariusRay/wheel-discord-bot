@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.env
+*.log
+
+# Cursor / local workspace noise (if present in this folder)
+agent-transcripts/
+mcps/
+terminals/
+
+# Only ship stable wheel art (ignore Cursor workspace image copies)
+assets/c__*
