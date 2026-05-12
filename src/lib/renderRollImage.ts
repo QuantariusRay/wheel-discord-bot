@@ -75,7 +75,13 @@ const MUTED = '#9aa0a6';
 const ACCENT = '#14b8a6';
 const PANEL = '#252a33';
 
-export async function renderRollPng(roll: DailyRoll): Promise<Buffer> {
+export async function renderRollPng(
+  roll: DailyRoll,
+  rosterDisplayTags: string[],
+): Promise<Buffer> {
+  if (rosterDisplayTags.length !== roll.roster.length) {
+    throw new RangeError('rosterDisplayTags must have one label per roster seat');
+  }
   const W = 980;
   const pad = 40;
   const innerW = W - pad * 2;
@@ -126,7 +132,9 @@ export async function renderRollPng(roll: DailyRoll): Promise<Buffer> {
   y += 32;
 
   const slotW = Math.min(200, Math.floor((innerW - 16) / roll.roster.length));
-  const slotH = 230;
+  const headerH = 22;
+  const footerH = 52;
+  const slotH = 252;
   const gap = 12;
   let x = pad;
   for (let i = 0; i < roll.roster.length; i++) {
@@ -141,8 +149,8 @@ export async function renderRollPng(roll: DailyRoll): Promise<Buffer> {
     ctx.strokeRect(x, y, slotW, slotH);
 
     const innerPad = 8;
-    const portraitTop = y + innerPad + 18;
-    const availH = slotH - 18 - 52 - innerPad * 2;
+    const portraitTop = y + innerPad + headerH;
+    const availH = slotH - headerH - footerH - innerPad * 2;
     const availW = slotW - innerPad * 2;
 
     ctx.fillStyle = MUTED;
@@ -172,9 +180,22 @@ export async function renderRollPng(roll: DailyRoll): Promise<Buffer> {
       );
     }
 
+    const tag = rosterDisplayTags[i] ?? '';
+
     ctx.fillStyle = TEXT;
-    ctx.font = 'bold 16px sans-serif';
-    ctx.fillText(c, x + innerPad, y + slotH - 16);
+    ctx.font = 'bold 15px sans-serif';
+    ctx.fillText(c, x + innerPad, y + slotH - footerH + 14);
+
+    ctx.fillStyle = ACCENT;
+    ctx.font = 'bold 13px sans-serif';
+    drawWrappedText(
+      ctx,
+      tag,
+      x + innerPad,
+      y + slotH - 22,
+      slotW - innerPad * 2,
+      15,
+    );
 
     x += slotW + gap;
   }

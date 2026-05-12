@@ -2,32 +2,168 @@ import {
   AttachmentBuilder,
   ChatInputCommandInteraction,
   EmbedBuilder,
+  MessageFlags,
   SlashCommandBuilder,
+  type GuildMember,
+  type User,
 } from 'discord.js';
 import { rollDaily } from '../lib/randomizeDaily';
+
+const PLAYER_OPTION_KEYS = ['player_1', 'player_2', 'player_3', 'player_4'] as const;
+
+/** Subcommand names under `game` group → seat count (Discord cannot hide options by another field). */
+export const GAME_GROUP_NAME = 'game' as const;
+export const GAME_MODE_SUBCOMMANDS = ['one', 'two', 'three', 'four'] as const;
+export type GameModeSubcommand = (typeof GAME_MODE_SUBCOMMANDS)[number];
+
+const MODE_TO_COUNT: Record<GameModeSubcommand, number> = {
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+};
 
 const EMBED_COLOR = 0x14b8a6;
 
 export const customCommand = new SlashCommandBuilder()
   .setName('custom')
   .setDescription('Slay the Spire 2 custom game tools')
-  .addSubcommand((sub) =>
-    sub
-      .setName('game')
-      .setDescription('Roll randomized custom game settings')
-      .addIntegerOption((opt) =>
-        opt
-          .setName('players')
-          .setDescription('Number of players (1–4)')
-          .setRequired(true)
-          .setMinValue(1)
-          .setMaxValue(4),
+  .addSubcommandGroup((group) =>
+    group
+      .setName(GAME_GROUP_NAME)
+      .setDescription('Roll a randomized custom game')
+      .addSubcommand((sub) =>
+        sub
+          .setName('one')
+          .setDescription('1 player — pick who is in seat 1')
+          .addUserOption((o) =>
+            o
+              .setName('player_1')
+              .setDescription('Seat 1')
+              .setRequired(true),
+          ),
+      )
+      .addSubcommand((sub) =>
+        sub
+          .setName('two')
+          .setDescription('2 players — pick both seats')
+          .addUserOption((o) =>
+            o
+              .setName('player_1')
+              .setDescription('Seat 1')
+              .setRequired(true),
+          )
+          .addUserOption((o) =>
+            o
+              .setName('player_2')
+              .setDescription('Seat 2')
+              .setRequired(true),
+          ),
+      )
+      .addSubcommand((sub) =>
+        sub
+          .setName('three')
+          .setDescription('3 players — pick all three seats')
+          .addUserOption((o) =>
+            o
+              .setName('player_1')
+              .setDescription('Seat 1')
+              .setRequired(true),
+          )
+          .addUserOption((o) =>
+            o
+              .setName('player_2')
+              .setDescription('Seat 2')
+              .setRequired(true),
+          )
+          .addUserOption((o) =>
+            o
+              .setName('player_3')
+              .setDescription('Seat 3')
+              .setRequired(true),
+          ),
+      )
+      .addSubcommand((sub) =>
+        sub
+          .setName('four')
+          .setDescription('4 players — pick all four seats')
+          .addUserOption((o) =>
+            o
+              .setName('player_1')
+              .setDescription('Seat 1')
+              .setRequired(true),
+          )
+          .addUserOption((o) =>
+            o
+              .setName('player_2')
+              .setDescription('Seat 2')
+              .setRequired(true),
+          )
+          .addUserOption((o) =>
+            o
+              .setName('player_3')
+              .setDescription('Seat 3')
+              .setRequired(true),
+          )
+          .addUserOption((o) =>
+            o
+              .setName('player_4')
+              .setDescription('Seat 4')
+              .setRequired(true),
+          ),
       ),
   );
+
+type ResolvedMember = ReturnType<
+  ChatInputCommandInteraction['options']['getMember']
+>;
+
+function atDisplay(user: User, member: ResolvedMember): string {
+  if (member && typeof (member as GuildMember).displayName === 'string') {
+    return `@${(member as GuildMember).displayName}`;
+  }
+  return `@${user.globalName ?? user.username}`;
+}
+
+export function isCustomGameRollInteraction(
+  interaction: ChatInputCommandInteraction,
+): boolean {
+  if (interaction.commandName !== 'custom') return false;
+  if (interaction.options.getSubcommandGroup(false) !== GAME_GROUP_NAME) {
+    return false;
+  }
+  const leaf = interaction.options.getSubcommand(false);
+  return GAME_MODE_SUBCOMMANDS.includes(leaf as GameModeSubcommand);
+}
 
 export async function handleCustomGame(
   interaction: ChatInputCommandInteraction,
 ): Promise<void> {
+  const leaf = interaction.options.getSubcommand(false);
+  if (
+    !leaf ||
+    !GAME_MODE_SUBCOMMANDS.includes(leaf as GameModeSubcommand)
+  ) {
+    await interaction.reply({
+      flags: MessageFlags.Ephemeral,
+      content:
+        'Use `/custom game one` … `four` with the matching number of player fields.',
+    });
+    return;
+  }
+  const playerCount = MODE_TO_COUNT[leaf as GameModeSubcommand];
+
+  const seats: { user: User; member: ResolvedMember }[] = [];
+  for (let i = 0; i < playerCount; i++) {
+    const key = PLAYER_OPTION_KEYS[i];
+    const user = interaction.options.getUser(key, true);
+    const member = interaction.options.getMember(key);
+    seats.push({ user, member });
+  }
+
+  const rosterTags = seats.map((s) => atDisplay(s.user, s.member));
+  const pingContent = seats.map((s) => `<@${s.user.id}>`).join(' ');
+
   const lagMs = Date.now() - interaction.createdTimestamp;
   if (lagMs > 2500) {
     console.warn(
@@ -35,17 +171,12 @@ export async function handleCustomGame(
     );
   }
 
-  // Acknowledge within 3s. Heavy canvas work must NOT run on this stack — it blocks
-  // other interactions' deferReply and causes DiscordAPIError[10062] Unknown interaction.
   await interaction.deferReply();
 
-  const players = interaction.options.getInteger('players', true);
-  const roll = rollDaily(players);
+  const roll = rollDaily(playerCount);
 
   setImmediate(() => {
     void (async () => {
-      // Load Skia/canvas only after defer — avoids blocking the gateway thread on first
-      // `require` and keeps other interactions able to acknowledge within 3s.
       let renderRollPng: typeof import('../lib/renderRollImage').renderRollPng;
       try {
         ({ renderRollPng } = await import('../lib/renderRollImage'));
@@ -65,7 +196,7 @@ export async function handleCustomGame(
 
       let png: Buffer;
       try {
-        png = await renderRollPng(roll);
+        png = await renderRollPng(roll, rosterTags);
       } catch (err) {
         console.error(err);
         try {
@@ -93,7 +224,12 @@ export async function handleCustomGame(
         .setTimestamp(new Date());
 
       try {
-        await interaction.editReply({ embeds: [embed], files: [attachment] });
+        await interaction.editReply({
+          content: pingContent,
+          allowedMentions: { users: seats.map((s) => s.user.id) },
+          embeds: [embed],
+          files: [attachment],
+        });
       } catch (err) {
         console.error(err);
         try {

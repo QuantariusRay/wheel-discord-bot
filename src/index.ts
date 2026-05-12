@@ -6,7 +6,10 @@ import {
   Interaction,
   MessageFlags,
 } from 'discord.js';
-import { handleCustomGame } from './commands/custom-game';
+import {
+  handleCustomGame,
+  isCustomGameRollInteraction,
+} from './commands/custom-game';
 
 function discordApiCode(e: unknown): number | undefined {
   if (typeof e !== 'object' || e === null) return undefined;
@@ -29,7 +32,7 @@ client.once(Events.ClientReady, (c) => {
 client.on(Events.InteractionCreate, async (interaction: Interaction) => {
   if (!interaction.isChatInputCommand()) return;
   if (interaction.commandName !== 'custom') return;
-  if (interaction.options.getSubcommand() !== 'game') return;
+  if (!isCustomGameRollInteraction(interaction)) return;
 
   try {
     await handleCustomGame(interaction);
