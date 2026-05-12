@@ -6,10 +6,7 @@ import {
   Interaction,
   MessageFlags,
 } from 'discord.js';
-import {
-  handleCustomGame,
-  isCustomGameRollInteraction,
-} from './commands/custom-game';
+import { handleCustomGame, isCustomGameRollInteraction } from './commands/custom-game';
 
 function discordApiCode(e: unknown): number | undefined {
   if (typeof e !== 'object' || e === null) return undefined;
@@ -49,7 +46,6 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
     }
     const msg = 'Something went wrong while rolling the daily.';
     try {
-      // After deferReply, only editReply is valid — reply() causes 10062 Unknown interaction.
       if (interaction.deferred) {
         await interaction.editReply({ content: msg, embeds: [], files: [] });
       } else if (!interaction.replied) {

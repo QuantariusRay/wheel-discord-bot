@@ -11,106 +11,46 @@ import { rollDaily } from '../lib/randomizeDaily';
 
 const PLAYER_OPTION_KEYS = ['player_1', 'player_2', 'player_3', 'player_4'] as const;
 
-/** Subcommand names under `game` group → seat count (Discord cannot hide options by another field). */
-export const GAME_GROUP_NAME = 'game' as const;
-export const GAME_MODE_SUBCOMMANDS = ['one', 'two', 'three', 'four'] as const;
-export type GameModeSubcommand = (typeof GAME_MODE_SUBCOMMANDS)[number];
-
-const MODE_TO_COUNT: Record<GameModeSubcommand, number> = {
-  one: 1,
-  two: 2,
-  three: 3,
-  four: 4,
-};
-
 const EMBED_COLOR = 0x14b8a6;
 
 export const customCommand = new SlashCommandBuilder()
   .setName('custom')
   .setDescription('Slay the Spire 2 custom game tools')
-  .addSubcommandGroup((group) =>
-    group
-      .setName(GAME_GROUP_NAME)
-      .setDescription('Roll a randomized custom game')
-      .addSubcommand((sub) =>
-        sub
-          .setName('one')
-          .setDescription('1 player — pick who is in seat 1')
-          .addUserOption((o) =>
-            o
-              .setName('player_1')
-              .setDescription('Seat 1')
-              .setRequired(true),
-          ),
+  .addSubcommand((sub) =>
+    sub
+      .setName('game')
+      .setDescription('Roll randomized custom game settings')
+      .addIntegerOption((opt) =>
+        opt
+          .setName('players')
+          .setDescription('Number of players (1–4)')
+          .setRequired(true)
+          .setMinValue(1)
+          .setMaxValue(4),
       )
-      .addSubcommand((sub) =>
-        sub
-          .setName('two')
-          .setDescription('2 players — pick both seats')
-          .addUserOption((o) =>
-            o
-              .setName('player_1')
-              .setDescription('Seat 1')
-              .setRequired(true),
-          )
-          .addUserOption((o) =>
-            o
-              .setName('player_2')
-              .setDescription('Seat 2')
-              .setRequired(true),
-          ),
+      .addUserOption((opt) =>
+        opt
+          .setName('player_1')
+          .setDescription('Discord user for seat 1 (required for your player count)')
+          .setRequired(false),
       )
-      .addSubcommand((sub) =>
-        sub
-          .setName('three')
-          .setDescription('3 players — pick all three seats')
-          .addUserOption((o) =>
-            o
-              .setName('player_1')
-              .setDescription('Seat 1')
-              .setRequired(true),
-          )
-          .addUserOption((o) =>
-            o
-              .setName('player_2')
-              .setDescription('Seat 2')
-              .setRequired(true),
-          )
-          .addUserOption((o) =>
-            o
-              .setName('player_3')
-              .setDescription('Seat 3')
-              .setRequired(true),
-          ),
+      .addUserOption((opt) =>
+        opt
+          .setName('player_2')
+          .setDescription('Discord user for seat 2 (required if players ≥ 2)')
+          .setRequired(false),
       )
-      .addSubcommand((sub) =>
-        sub
-          .setName('four')
-          .setDescription('4 players — pick all four seats')
-          .addUserOption((o) =>
-            o
-              .setName('player_1')
-              .setDescription('Seat 1')
-              .setRequired(true),
-          )
-          .addUserOption((o) =>
-            o
-              .setName('player_2')
-              .setDescription('Seat 2')
-              .setRequired(true),
-          )
-          .addUserOption((o) =>
-            o
-              .setName('player_3')
-              .setDescription('Seat 3')
-              .setRequired(true),
-          )
-          .addUserOption((o) =>
-            o
-              .setName('player_4')
-              .setDescription('Seat 4')
-              .setRequired(true),
-          ),
+      .addUserOption((opt) =>
+        opt
+          .setName('player_3')
+          .setDescription('Discord user for seat 3 (required if players ≥ 3)')
+          .setRequired(false),
+      )
+      .addUserOption((opt) =>
+        opt
+          .setName('player_4')
+          .setDescription('Discord user for seat 4 (required if players = 4)')
+          .setRequired(false),
       ),
   );
 
@@ -125,38 +65,39 @@ function atDisplay(user: User, member: ResolvedMember): string {
   return `@${user.globalName ?? user.username}`;
 }
 
+/** True for `/custom game` (flat subcommand + integer `players`). */
 export function isCustomGameRollInteraction(
   interaction: ChatInputCommandInteraction,
 ): boolean {
   if (interaction.commandName !== 'custom') return false;
-  if (interaction.options.getSubcommandGroup(false) !== GAME_GROUP_NAME) {
-    return false;
-  }
-  const leaf = interaction.options.getSubcommand(false);
-  return GAME_MODE_SUBCOMMANDS.includes(leaf as GameModeSubcommand);
+  if (interaction.options.getSubcommandGroup(false) !== null) return false;
+  return interaction.options.getSubcommand(false) === 'game';
 }
 
 export async function handleCustomGame(
   interaction: ChatInputCommandInteraction,
 ): Promise<void> {
-  const leaf = interaction.options.getSubcommand(false);
-  if (
-    !leaf ||
-    !GAME_MODE_SUBCOMMANDS.includes(leaf as GameModeSubcommand)
-  ) {
+  const playerCount = interaction.options.getInteger('players', true);
+  if (!Number.isInteger(playerCount) || playerCount < 1 || playerCount > 4) {
     await interaction.reply({
       flags: MessageFlags.Ephemeral,
-      content:
-        'Use `/custom game one` … `four` with the matching number of player fields.',
+      content: '`players` must be an integer from 1 to 4.',
     });
     return;
   }
-  const playerCount = MODE_TO_COUNT[leaf as GameModeSubcommand];
 
   const seats: { user: User; member: ResolvedMember }[] = [];
   for (let i = 0; i < playerCount; i++) {
     const key = PLAYER_OPTION_KEYS[i];
-    const user = interaction.options.getUser(key, true);
+    const user = interaction.options.getUser(key);
+    if (!user) {
+      await interaction.reply({
+        flags: MessageFlags.Ephemeral,
+        content:
+          `When \`players\` is **${playerCount}**, set **${PLAYER_OPTION_KEYS.slice(0, playerCount).join('**, **')}** — one Discord user per seat (shown on the roll image).`,
+      });
+      return;
+    }
     const member = interaction.options.getMember(key);
     seats.push({ user, member });
   }

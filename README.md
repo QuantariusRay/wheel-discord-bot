@@ -1,6 +1,6 @@
 # STS2 Wheel (Discord bot)
 
-Slash commands **`/custom game one`** … **`four`** roll randomized Slay the Spire 2 custom game settings (each mode shows exactly that many **required** player pickers), then reply with an embed plus a **generated PNG** (roster portraits with `@` labels, ascension, mode + definitions, modifiers + definitions, bad effects). The message pings the selected users.
+Slash command **`/custom game`** takes an **integer** `players` (1–4) plus **`player_1`…`player_4`** user fields (fill one per seat for your count). It rolls randomized Slay the Spire 2 settings and replies with an embed plus a **generated PNG** (roster with `@` labels, ascension, mode + definitions, modifiers + definitions, bad effects). The message pings the selected users.
 
 ## Class portraits (required for images in the roll)
 
